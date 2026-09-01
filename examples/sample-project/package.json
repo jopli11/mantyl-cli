@@ -1,0 +1,15 @@
+{
+  "name": "notes-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fixture project for Mantyl tests — a tiny notes API with deliberately seeded transfer-debt quirks.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test tests/"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

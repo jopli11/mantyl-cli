@@ -1,0 +1,7 @@
+{"type":"user","uuid":"u-001","sessionId":"fixture-session-01","timestamp":"2026-07-18T10:00:00.000Z","message":{"role":"user","content":"Add auth to the notes API. Use API_TOKEN=sk-ant-api03-verysecretfixturevalue0001 for local testing."}}
+{"type":"assistant","uuid":"a-001","sessionId":"fixture-session-01","timestamp":"2026-07-18T10:00:20.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I added bearer-token auth to src/server.ts using the API_TOKEN environment variable."}]}}
+{"type":"assistant","uuid":"a-002","sessionId":"fixture-session-01","timestamp":"2026-07-18T10:05:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I implemented rate limiting for all endpoints so bursts are throttled."}]}}
+this line is not valid json and must be counted, not fatal
+{"type":"assistant","uuid":"a-003","sessionId":"fixture-session-01","timestamp":"2026-07-18T10:09:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Persistence is deferred for now — notes stay in memory until after handover."}]}}
+{"type":"user","uuid":"u-002","sessionId":"fixture-session-01","timestamp":"2026-07-18T10:11:00.000Z","message":{"role":"user","content":"lets go with bearer tokens instead of session cookies for the auth layer"}}
+{"type":"assistant","uuid":"a-004","sessionId":"fixture-session-01","timestamp":"2026-07-18T10:12:30.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Agreed. I chose an in-memory Map over Postgres for storage because the fixture must run with zero external services."}]}}

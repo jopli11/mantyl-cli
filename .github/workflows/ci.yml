@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      # The verification sandbox runs lint; CI must not check less than
+      # the passport does (a sandbox verify caught what CI missed).
+      - name: Lint
+        run: pnpm -r lint
+
+      - name: Test
+        run: pnpm -r test
+
+      - name: CLI smoke test
+        run: node apps/cli/dist/index.js --version
+
+      # The published artefact is the bundle, not the workspace — prove the
+      # tarball installs and runs standalone, exactly as `npm install -g
+      # mantyl` will.
+      - name: Pack & install smoke test
+        run: |
+          cd apps/cli
+          npm pack
+          npm install -g ./mantyl-*.tgz
+          cd /tmp
+          mantyl --version
+          mantyl doctor

@@ -1,0 +1,62 @@
+{
+  "name": "mantyl",
+  "version": "0.3.1",
+  "description": "The handover layer for AI-built software. Local-first: scan, verify and generate a project passport, no account required.",
+  "type": "module",
+  "bin": {
+    "mantyl": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.4"
+  },
+  "devDependencies": {
+    "@mantyl/adapter-claude-code": "workspace:*",
+    "@mantyl/adapter-codex": "workspace:*",
+    "@mantyl/adapter-cursor": "workspace:*",
+    "@mantyl/config": "workspace:*",
+    "@mantyl/core": "workspace:*",
+    "@mantyl/renderer-html": "workspace:*",
+    "@mantyl/renderer-markdown": "workspace:*",
+    "@mantyl/runner-docker": "workspace:*",
+    "@mantyl/schema": "workspace:*",
+    "@types/node": "^22.20.1",
+    "commander": "^13.0.0",
+    "tsup": "^8.3.5"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "keywords": [
+    "handover",
+    "software-handover",
+    "ai",
+    "agentic",
+    "coding-agent",
+    "claude-code",
+    "cursor",
+    "codex",
+    "verification",
+    "verify",
+    "passport",
+    "cli",
+    "audit",
+    "provenance",
+    "docker"
+  ],
+  "homepage": "https://mantyl.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jopli11/mantyl-cli.git"
+  },
+  "license": "MIT"
+}

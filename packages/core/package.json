@@ -1,0 +1,40 @@
+{
+  "name": "@mantyl/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.4",
+    "@mantyl/adapter-claude-code": "workspace:*",
+    "@mantyl/adapter-codex": "workspace:*",
+    "@mantyl/adapter-cursor": "workspace:*",
+    "@mantyl/collectors-git": "workspace:*",
+    "@mantyl/collectors-repository": "workspace:*",
+    "@mantyl/config": "workspace:*",
+    "@mantyl/evidence": "workspace:*",
+    "@mantyl/renderer-html": "workspace:*",
+    "@mantyl/renderer-markdown": "workspace:*",
+    "@mantyl/runner-docker": "workspace:*",
+    "@mantyl/schema": "workspace:*",
+    "@mantyl/verifier-node": "workspace:*",
+    "tar": "^7.5.22",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1"
+  }
+}

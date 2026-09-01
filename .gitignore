@@ -1,0 +1,45 @@
+# Local Claude Code settings
+.claude/settings.local.json
+
+# dependencies
+node_modules/
+
+# build output
+dist/
+.next/
+out/
+build/
+coverage/
+
+# next.js
+next-env.d.ts
+
+# typescript
+*.tsbuildinfo
+
+# mantyl local artefacts (content-addressed cache, run output)
+.mantyl/
+
+# misc
+.DS_Store
+*.pem
+*.log
+.pnpm-debug.log*
+
+# env files (opt-in to commit if ever needed)
+.env*
+# .env.example files are documentation, not secrets — always tracked
+!.env.example
+
+# vercel
+.vercel
+
+# npm pack tarballs
+*.tgz
+
+# local hosted-passport store (dev fallback)
+.passport-store/
+
+# local verification job store (dev fallback)
+.verify-jobs/
+.user-links/
