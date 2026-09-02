@@ -86,14 +86,15 @@ it — `llm.provider: "none"` is first-class.
 | `mantyl init` | Create `mantyl.config.json` |
 | `mantyl scan` | Collect repository, git and agent-session observations |
 | `mantyl verify` | Run checks in an isolated Docker sandbox (network off after install) |
-| `mantyl generate` | Assemble and digest-stamp the passport + reports |
+| `mantyl generate` | Assemble and digest-stamp the passport + reports (`--no-llm` skips analysis for one run) |
 | `mantyl receive` | Independently validate a received passport (exit 7 on divergence) |
+| `mantyl accept` | Recipient's closing act: full recheck, findings acknowledged by id, detached acceptance record bound to the passport digest |
 | `mantyl doctor` | Check the local environment |
 | `mantyl config` | Show the resolved configuration |
 
 Exit codes are stable and documented for CI use: `0` ok · `2` invalid config ·
-`4` verification failed · `5` sandbox unavailable · `6` invalid passport ·
-`7` receive divergence.
+`3` not a workable project · `4` verification failed · `5` sandbox unavailable ·
+`6` invalid passport · `7` receive divergence.
 
 ---
 

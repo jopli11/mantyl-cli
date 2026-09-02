@@ -1,6 +1,6 @@
 {
   "name": "mantyl",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "The handover layer for AI-built software. Local-first: scan, verify and generate a project passport, no account required.",
   "type": "module",
   "bin": {

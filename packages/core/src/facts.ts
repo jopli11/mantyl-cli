@@ -25,7 +25,7 @@ const TEST_FILE_PATH = /(?:^|\/)(?:__tests__|tests?)\/|\.(?:test|spec)\.[cm]?[jt
  * documented in .env.example is noise, not a finding (first-user feedback:
  * NODE_ENV and VERCEL_GIT_COMMIT_SHA flagged as undocumented risks).
  */
-const PLATFORM_ENV = /^(?:NODE_ENV|CI|TZ|NEXT_RUNTIME|GITHUB_ACTIONS|RUNNER_[A-Z_]+|VERCEL(?:_[A-Z_]+)?|NEXT_PUBLIC_VERCEL_[A-Z_]+)$/;
+const PLATFORM_ENV = /^(?:NODE_ENV|CI|TZ|NEXT_RUNTIME|GITHUB_ACTIONS|RUNNER_[A-Z_]+|VERCEL(?:_[A-Z_]+)?|NEXT_PUBLIC_VERCEL_[A-Z_]+|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|XDG_[A-Z_]+)$/;
 
 export function extractFacts(
   repo: RepositoryObservation,
