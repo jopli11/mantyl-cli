@@ -1,5 +1,5 @@
 name: "Mantyl passport"
-description: "Generate a verified project passport in CI: repository evidence, executed checks in Docker, honest truth statuses. Evidence-backed, not a certification."
+description: "Generate a verified project passport in CI: repository evidence, checks executed in Docker, honest truth statuses."
 author: "Mantyl"
 branding:
   icon: "shield"
