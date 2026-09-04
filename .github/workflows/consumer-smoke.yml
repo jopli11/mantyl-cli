@@ -1,0 +1,35 @@
+# The consumer's path, exactly: the published action installing the
+# published CLI from npm, no local build anywhere. Dispatched manually
+# after releases to prove what a stranger's workflow gets.
+name: Consumer smoke
+on:
+  workflow_dispatch:
+
+jobs:
+  consumer:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the passport action as a consumer would
+        id: passport
+        uses: jopli11/mantyl-cli@main
+        with:
+          working-directory: examples/sample-project
+          attest-keyless: "true"
+
+      - name: Assert the outputs
+        shell: bash
+        run: |
+          echo "verdict=${{ steps.passport.outputs.verdict }}"
+          test "${{ steps.passport.outputs.verdict }}" = "passed"
+          test -n "${{ steps.passport.outputs.passport-digest }}"
+          test "${{ steps.passport.outputs.claims-contradicted }}" != "0"
