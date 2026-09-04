@@ -202,12 +202,148 @@ program
   });
 
 program
+  .command("ci")
+  .description("run the full evidence pipeline non-interactively for CI")
+  .option("--session-dir <dir>", "override the Claude Code session directory")
+  .option("--no-llm", "skip LLM analysis for this run regardless of config")
+  .action(async (opts: { sessionDir?: string; llm: boolean }) => {
+    const { appendFile, writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { renderPassportMarkdown } = await import("@mantyl/renderer-markdown");
+    const { renderPassportHtml } = await import("@mantyl/renderer-html");
+    const { ciSummary, githubOutputLines, githubStepSummaryMarkdown } = await import(
+      "@mantyl/core"
+    );
+
+    // Verify first: on a CI runner Docker is normally present, and a
+    // sandbox-less runner degrades honestly (skipped checks, exit 5).
+    const verified = await verifyProject(process.cwd(), { toolVersion: VERSION });
+    process.stdout.write(`mantyl ci · verify\n`);
+    for (const check of verified.results) {
+      process.stdout.write(`  ${check.outcome === "passed" ? "✓" : "✕"} ${check.checkId}: ${check.outcome}\n`);
+    }
+    if (!verified.sandbox.available) {
+      process.stderr.write(`  ⚠ sandbox unavailable: ${verified.sandbox.reason}\n`);
+    }
+
+    const result = await generateProject(process.cwd(), {
+      toolVersion: VERSION,
+      ...(opts.sessionDir ? { sessionDir: opts.sessionDir } : {}),
+      ...(opts.llm === false ? { noLlm: true } : {}),
+    });
+    await writeFile(
+      join(result.artifactsDir, "passport.md"),
+      renderPassportMarkdown(result.passport),
+      "utf8"
+    );
+    await writeFile(
+      join(result.artifactsDir, "passport.html"),
+      renderPassportHtml(result.passport),
+      "utf8"
+    );
+
+    const summary = ciSummary(result.passport, verified.sandbox.available);
+    process.stdout.write(
+      `mantyl ci · ${summary.project}\n` +
+        `  ▸ verdict             ${summary.verdict}\n` +
+        `  ▸ digest              ${summary.digest}\n` +
+        `  ▸ checks              ${summary.checksPassed} passed · ${summary.checksFailed} failed · ${summary.checksSkipped} skipped\n` +
+        `  ▸ claims              ${summary.claims} (${summary.contradicted} contradicted)\n` +
+        `  ▸ passport            ${result.passportPath}\n`
+    );
+
+    // GitHub-native surfaces, written only where the runner provides
+    // the files; locally these are absent and nothing happens.
+    if (process.env["GITHUB_OUTPUT"]) {
+      await appendFile(
+        process.env["GITHUB_OUTPUT"],
+        githubOutputLines(summary).join("\n") + "\n",
+        "utf8"
+      );
+    }
+    if (process.env["GITHUB_STEP_SUMMARY"]) {
+      await appendFile(process.env["GITHUB_STEP_SUMMARY"], githubStepSummaryMarkdown(summary), "utf8");
+    }
+    process.exit(summary.exitCode);
+  });
+
+program
+  .command("attest")
+  .description("sign the generated passport as an in-toto/DSSE attestation (beta)")
+  .option("--key <file>", "Ed25519 private key PEM (or MANTYL_ATTEST_PRIVATE_KEY env)")
+  .option("--public-key <file>", "matching public key PEM (or MANTYL_ATTEST_PUBLIC_KEY env)")
+  .option("--out <file>", "where to write the envelope", ".mantyl/attestation.json")
+  .option("--generate-keys", "print a new attestation key pair and exit")
+  .action(async (opts: { key?: string; publicKey?: string; out: string; generateKeys?: boolean }) => {
+    const { readFile, writeFile } = await import("node:fs/promises");
+    const { resolve } = await import("node:path");
+    const signing = await import("@mantyl/signing");
+    const { DEFAULT_POLICY, policyDigest } = await import("@mantyl/policy");
+    const { preparePublish, PassportInvalidError } = await import("@mantyl/core");
+
+    if (opts.generateKeys) {
+      const keys = signing.generateSigningKeyPair();
+      process.stdout.write(
+        `keyId: ${keys.keyId}\n\n` +
+          `MANTYL_ATTEST_PRIVATE_KEY — yours, keep it secret:\n${keys.privateKeyPem}\n` +
+          `MANTYL_ATTEST_PUBLIC_KEY — publish it wherever your recipients look:\n${keys.publicKeyPem}\n`
+      );
+      process.exit(ExitCode.Ok);
+    }
+
+    const privatePem =
+      (opts.key ? await readFile(resolve(opts.key), "utf8") : process.env["MANTYL_ATTEST_PRIVATE_KEY"]) ?? "";
+    const publicPem =
+      (opts.publicKey ? await readFile(resolve(opts.publicKey), "utf8") : process.env["MANTYL_ATTEST_PUBLIC_KEY"]) ?? "";
+    if (!privatePem || !publicPem) {
+      process.stderr.write(
+        "mantyl attest: a key pair is required — pass --key and --public-key, set the\n" +
+          "MANTYL_ATTEST_* env variables, or create a pair with mantyl attest --generate-keys\n"
+      );
+      process.exit(ExitCode.GenericError);
+    }
+
+    let prepared;
+    try {
+      prepared = await preparePublish(process.cwd());
+    } catch (err) {
+      if (err instanceof PassportInvalidError) {
+        process.stderr.write(`mantyl attest: ${err.message}\n`);
+        process.exit(ExitCode.PassportInvalid);
+      }
+      throw err;
+    }
+
+    const statement = signing.buildPassportStatement(
+      prepared.passport,
+      { id: DEFAULT_POLICY.id, version: DEFAULT_POLICY.version, digest: policyDigest(DEFAULT_POLICY) },
+      { toolVersion: VERSION }
+    );
+    const envelope = signing.signStatement(statement, privatePem, publicPem);
+    const outPath = resolve(opts.out);
+    await writeFile(outPath, `${JSON.stringify(envelope, null, 2)}\n`, "utf8");
+    process.stdout.write(
+      `mantyl attest · ${prepared.passport.project.name}\n` +
+        `  ▸ subject digest      ${statement.subject[0]?.digest.sha256}\n` +
+        `  ▸ verdict             ${statement.predicate.verdict}\n` +
+        `  ▸ policy              ${DEFAULT_POLICY.id}@${DEFAULT_POLICY.version}\n` +
+        `  ▸ key                 ${envelope.signatures[0]?.keyid}\n` +
+        `  ▸ envelope            ${outPath}\n` +
+        `  ▸ next                ship the envelope with the delivery · the recipient runs\n` +
+        `                        mantyl receive --attestation attestation.json --attestation-key <your public key>\n`
+    );
+    process.exit(ExitCode.Ok);
+  });
+
+program
   .command("receive")
   .description("independently validate a passport against a received repository")
   .argument("[path]", "path to the received repository", ".")
   .option("--passport <file>", "passport to validate against")
   .option("--skip-checks", "compare digests only; do not re-execute checks")
-  .action(async (path: string, opts: { passport?: string; skipChecks?: boolean }) => {
+  .option("--attestation <file>", "verify a DSSE attestation envelope against the passport")
+  .option("--attestation-key <file>", "public key PEM the attestation must be signed with")
+  .action(async (path: string, opts: { passport?: string; skipChecks?: boolean; attestation?: string; attestationKey?: string }) => {
     const { resolve } = await import("node:path");
     const { stat } = await import("node:fs/promises");
     const repoPath = resolve(path);
@@ -254,7 +390,46 @@ program
         "  ▸ this recheck is independent and repeatable any time · mantyl.dev\n"
       );
     }
-    process.exit(report.diverged ? ExitCode.ReceiveDivergence : ExitCode.Ok);
+
+    // Optional provenance check: does a DSSE attestation envelope bind
+    // to THIS passport under the given public key? A failed attestation
+    // is a provenance defect (exit 6), distinct from repo divergence.
+    let attestationValid: boolean | null = null;
+    if (opts.attestation) {
+      if (!opts.attestationKey) {
+        process.stderr.write(
+          "mantyl receive: --attestation needs --attestation-key <public key PEM>\n"
+        );
+        process.exit(ExitCode.GenericError);
+      }
+      const { readFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const { verifyPassportAttestation } = await import("@mantyl/signing");
+      const { parsePassport } = await import("@mantyl/schema");
+      // Mirror receiveProject's convention: the passport ships beside
+      // the delivered repository unless --passport says otherwise.
+      const passportPath = opts.passport
+        ? resolve(opts.passport)
+        : join(repoPath, "passport.json");
+      const passport = parsePassport(JSON.parse(await readFile(passportPath, "utf8")));
+      const envelope = JSON.parse(await readFile(resolve(opts.attestation), "utf8"));
+      const pubPem = await readFile(resolve(opts.attestationKey), "utf8");
+      const verdict = verifyPassportAttestation(envelope, pubPem, passport);
+      attestationValid = verdict.valid;
+      if (verdict.valid && verdict.statement) {
+        const p = verdict.statement.predicate;
+        process.stdout.write(
+          `  ✓ attestation: signed statement binds this passport\n` +
+            `      verdict ${p.verdict} · policy ${p.policy.id}@${p.policy.version} · commit ${(p.commit ?? "none").slice(0, 7)} · ${p.generatedAt}\n`
+        );
+      } else {
+        process.stderr.write(`  ✕ attestation: ${verdict.reason}\n`);
+      }
+    }
+
+    if (report.diverged) process.exit(ExitCode.ReceiveDivergence);
+    if (attestationValid === false) process.exit(ExitCode.PassportInvalid);
+    process.exit(ExitCode.Ok);
   });
 
 program
@@ -385,7 +560,11 @@ program
   .option("--endpoint <url>", "Mantyl host", "https://www.mantyl.dev")
   .option("--token <token>", "submit token (or MANTYL_TOKEN env)")
   .option("--yes", "skip the consent prompt")
-  .action(async (opts: { endpoint: string; token?: string; yes?: boolean }) => {
+  .option(
+    "--no-wait",
+    "submit and exit without polling; CI mode, pairs with MANTYL_CI_TOKEN"
+  )
+  .action(async (opts: { endpoint: string; token?: string; yes?: boolean; wait: boolean }) => {
     const { preparePublish, packProject, PassportInvalidError, PackError } = await import(
       "@mantyl/core"
     );
@@ -406,6 +585,21 @@ program
         "mantyl verified: the passport was generated at a different commit — regenerate it first\n"
       );
       process.exit(ExitCode.PassportInvalid);
+    }
+
+    // Honest limits, stated BEFORE any upload: one credit covers projects
+    // up to 10,000 tracked files and a 4MB compressed bundle. The server
+    // enforces the same numbers; hearing them here is kinder than a 413.
+    const CREDIT_MAX_FILES = 10_000;
+    const MAX_BUNDLE_BYTES = 4_000_000;
+    if (bundle.fileCount > CREDIT_MAX_FILES || bundle.bytes.length > MAX_BUNDLE_BYTES) {
+      process.stderr.write(
+        `mantyl verified: this project is over the current limit for a verification credit\n` +
+          `  (${bundle.fileCount} tracked files against ${CREDIT_MAX_FILES}, ` +
+          `${(bundle.bytes.length / 1e6).toFixed(1)}MB compressed against ${MAX_BUNDLE_BYTES / 1e6}MB)\n` +
+          "  bigger builds are coming — tell us what you need at https://www.mantyl.dev/contact\n"
+      );
+      process.exit(ExitCode.GenericError);
     }
 
     process.stdout.write(`mantyl verified · ${prepared.passport.project.name}\n`);
@@ -449,9 +643,15 @@ program
     } catch {
       // no previous run recorded
     }
+    // The CI pairing token (dashboard-issued) links the job to the
+    // builder's account; identity only, never payment.
+    const ciToken = process.env["MANTYL_CI_TOKEN"];
     const submitted = await fetch(`${opts.endpoint.replace(/\/$/, "")}/api/verify-jobs`, {
       method: "POST",
-      headers: token ? { authorization: `Bearer ${token}` } : {},
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(ciToken ? { "x-mantyl-ci-token": ciToken } : {}),
+      },
       body: form,
     });
     if (!submitted.ok) {
@@ -465,12 +665,16 @@ program
       process.stderr.write(`mantyl verified: submission failed (${submitted.status}): ${detail}\n`);
       process.exit(ExitCode.GenericError);
     }
-    const { id, status, checkoutUrl, rerun } = (await submitted.json()) as {
+    const { id, status, checkoutUrl, rerun, paired } = (await submitted.json()) as {
       id: string;
       status: string;
       checkoutUrl?: string;
       rerun?: string;
+      paired?: string;
     };
+    if (paired) {
+      process.stdout.write(`  ✓ ${paired} — it appears on your delivery console\n`);
+    }
     try {
       await writeLastJob(lastJobPath, JSON.stringify({ jobId: id }), "utf8");
     } catch {
@@ -487,27 +691,51 @@ program
     if (status === "awaiting_payment" && checkoutUrl) {
       process.stdout.write(
         `  ▸ job                 ${id}\n` +
-          `  ▸ payment             this verification needs a credit (£19 to £49 by project size)\n` +
+          `  ▸ payment             this verification needs a credit (£29, one credit per project)\n` +
           `  ▸ checkout            ${checkoutUrl}\n` +
           "  opening the checkout in your browser — this run resumes when payment lands\n"
       );
-      const { spawn } = await import("node:child_process");
-      const opener =
-        process.platform === "win32"
-          ? ["cmd", ["/c", "start", "", checkoutUrl]]
-          : process.platform === "darwin"
-            ? ["open", [checkoutUrl]]
-            : ["xdg-open", [checkoutUrl]];
-      try {
-        spawn(opener[0] as string, opener[1] as string[], {
-          detached: true,
-          stdio: "ignore",
-        }).unref();
-      } catch {
-        // no browser available: the printed URL is enough
+      if (opts.wait) {
+        const { spawn } = await import("node:child_process");
+        const opener =
+          process.platform === "win32"
+            ? ["cmd", ["/c", "start", "", checkoutUrl]]
+            : process.platform === "darwin"
+              ? ["open", [checkoutUrl]]
+              : ["xdg-open", [checkoutUrl]];
+        try {
+          spawn(opener[0] as string, opener[1] as string[], {
+            detached: true,
+            stdio: "ignore",
+          }).unref();
+        } catch {
+          // no browser available: the printed URL is enough
+        }
       }
     } else if (rerun !== "granted") {
       process.stdout.write(`  ▸ job                 ${id} — waiting for the worker\n`);
+    }
+
+    // CI mode: submit-and-exit. The run continues server-side, the job
+    // summary carries the checkout link when payment is needed, and the
+    // paired dashboard tracks the outcome.
+    if (!opts.wait) {
+      if (process.env["GITHUB_STEP_SUMMARY"]) {
+        const { appendFile } = await import("node:fs/promises");
+        const summaryLines = [
+          `## Mantyl Verified · job ${id}`,
+          "",
+          status === "awaiting_payment" && checkoutUrl
+            ? `This run needs a verification credit. [Complete the checkout](${checkoutUrl}) and the independent run starts the moment payment lands; the signed mark attaches to the hosted passport automatically.`
+            : "Submitted and queued; the independent run signs the passport when every check reproduces.",
+          "",
+        ];
+        await appendFile(process.env["GITHUB_STEP_SUMMARY"], summaryLines.join("\n"), "utf8");
+      }
+      process.stdout.write(
+        `  ▸ submitted without waiting — track job ${id} on your delivery console\n`
+      );
+      process.exit(ExitCode.Ok);
     }
 
     // Bounded polling: the run continues server-side whether or not this

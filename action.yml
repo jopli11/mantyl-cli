@@ -1,0 +1,128 @@
+name: "Mantyl passport"
+description: "Generate a verified project passport in CI: repository evidence, executed checks in Docker, honest truth statuses. Evidence-backed, not a certification."
+author: "Mantyl"
+branding:
+  icon: "shield"
+  color: "yellow"
+
+inputs:
+  version:
+    description: "mantyl npm version to run (a version or dist-tag)."
+    required: false
+    default: "latest"
+  working-directory:
+    description: "Project directory to run in."
+    required: false
+    default: "."
+  attest:
+    description: "Sign the passport as a DSSE attestation with your own Ed25519 key (needs the two key inputs). Use at handover points such as releases, not on every push."
+    required: false
+    default: "false"
+  attest-keyless:
+    description: "Sigstore keyless attestation via GitHub's attestation store (free tier): binds the passport digest to this workflow's OIDC identity, verifiable with gh attestation verify. Needs permissions id-token: write and attestations: write on the job. Public repositories only: GitHub's store refuses user-owned private repos."
+    required: false
+    default: "false"
+  attest-private-key:
+    description: "Ed25519 private key PEM for attestation signing. Pass a secret; never commit it."
+    required: false
+    default: ""
+  attest-public-key:
+    description: "Matching public key PEM."
+    required: false
+    default: ""
+  upload-artifacts:
+    description: "Upload passport.json and the rendered reports as a workflow artifact."
+    required: false
+    default: "true"
+  verified:
+    description: "Submit a passed run for paid Mantyl Verified verification (submit-and-exit; the job summary carries the checkout link). Requires .mantyl/ in the project's .gitignore, since a dirty tree refuses submission."
+    required: false
+    default: "false"
+  ci-token:
+    description: "Mantyl CI pairing token (dashboard-issued). Pass a secret; links the run to your Mantyl account. Identity only, never payment."
+    required: false
+    default: ""
+
+outputs:
+  verdict:
+    description: "passed, failed, or no-sandbox."
+    value: ${{ steps.ci.outputs.verdict }}
+  passport-digest:
+    description: "Canonical digest of the generated passport."
+    value: ${{ steps.ci.outputs.passport-digest }}
+  checks-passed:
+    description: "Executed checks that passed."
+    value: ${{ steps.ci.outputs.checks-passed }}
+  checks-failed:
+    description: "Executed checks that failed or errored."
+    value: ${{ steps.ci.outputs.checks-failed }}
+  claims-contradicted:
+    description: "Claims the evidence contradicted."
+    value: ${{ steps.ci.outputs.claims-contradicted }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install mantyl
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "local" ]; then
+          # Development mode: build the CLI from this checkout (the
+          # monorepo or the public mirror, same layout). Used by the
+          # smoke workflow; real consumers install from npm.
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm -r build
+          npm install -g "$(npm pack ./apps/cli --silent | tail -n 1)"
+        else
+          npm install -g "mantyl@${{ inputs.version }}"
+        fi
+
+    - name: Generate the passport
+      id: ci
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      # mantyl ci writes the step outputs and the job summary itself.
+      # Exit codes are the contract: 4 failed checks, 5 no sandbox.
+      # continue-on-error stays false: a failing delivery fails the job,
+      # which is the point of running it in CI.
+      run: mantyl ci --no-llm
+
+    - name: Attest the passport
+      if: ${{ inputs.attest == 'true' && steps.ci.outputs.verdict == 'passed' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MANTYL_ATTEST_PRIVATE_KEY: ${{ inputs.attest-private-key }}
+        MANTYL_ATTEST_PUBLIC_KEY: ${{ inputs.attest-public-key }}
+      run: mantyl attest
+
+    - name: Keyless attestation via Sigstore
+      if: ${{ inputs.attest-keyless == 'true' && steps.ci.outputs.verdict == 'passed' }}
+      uses: actions/attest@v2
+      with:
+        subject-name: "mantyl-passport-${{ steps.ci.outputs.passport-digest }}"
+        subject-digest: "sha256:${{ steps.ci.outputs.passport-digest }}"
+        predicate-type: "https://mantyl.dev/attestations/passport/v1"
+        predicate: |
+          {"passportDigest":"${{ steps.ci.outputs.passport-digest }}","commit":"${{ steps.ci.outputs.commit }}","verdict":"${{ steps.ci.outputs.verdict }}","checksPassed":${{ steps.ci.outputs.checks-passed }},"claimsContradicted":${{ steps.ci.outputs.claims-contradicted }}}
+
+    - name: Request Mantyl Verified
+      if: ${{ inputs.verified == 'true' && steps.ci.outputs.verdict == 'passed' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MANTYL_CI_TOKEN: ${{ inputs.ci-token }}
+      run: mantyl verified --yes --no-wait
+
+    - name: Upload passport artifact
+      if: ${{ inputs.upload-artifacts == 'true' && always() && steps.ci.outcome != 'skipped' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: mantyl-passport
+        path: |
+          ${{ inputs.working-directory }}/.mantyl/passport.json
+          ${{ inputs.working-directory }}/.mantyl/passport.md
+          ${{ inputs.working-directory }}/.mantyl/passport.html
+          ${{ inputs.working-directory }}/.mantyl/attestation.json
+        if-no-files-found: ignore

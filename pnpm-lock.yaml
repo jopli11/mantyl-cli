@@ -36,6 +36,9 @@ importers:
       '@mantyl/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@mantyl/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@mantyl/renderer-html':
         specifier: workspace:*
         version: link:../../packages/renderer-html
@@ -48,6 +51,9 @@ importers:
       '@mantyl/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      '@mantyl/signing':
+        specifier: workspace:*
+        version: link:../../packages/signing
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1
@@ -179,6 +185,15 @@ importers:
         specifier: workspace:*
         version: link:../schema
 
+  packages/policy:
+    dependencies:
+      '@mantyl/schema':
+        specifier: workspace:*
+        version: link:../schema
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/renderer-html:
     dependencies:
       '@mantyl/schema':
@@ -210,6 +225,16 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+
+  packages/signing:
+    dependencies:
+      '@mantyl/schema':
+        specifier: workspace:*
+        version: link:../schema
     devDependencies:
       '@types/node':
         specifier: ^22.20.1

@@ -87,7 +87,9 @@ it — `llm.provider: "none"` is first-class.
 | `mantyl scan` | Collect repository, git and agent-session observations |
 | `mantyl verify` | Run checks in an isolated Docker sandbox (network off after install) |
 | `mantyl generate` | Assemble and digest-stamp the passport + reports (`--no-llm` skips analysis for one run) |
-| `mantyl receive` | Independently validate a received passport (exit 7 on divergence) |
+| `mantyl ci` | The pipeline for CI: verify then generate, GitHub outputs and job summary on Actions (exit 0/4/5) |
+| `mantyl attest` | Seal the passport as an in-toto/DSSE attestation with your key pair (`--generate-keys`) |
+| `mantyl receive` | Independently validate a received passport (exit 7 on divergence; `--attestation` binds a DSSE envelope) |
 | `mantyl accept` | Recipient's closing act: full recheck, findings acknowledged by id, detached acceptance record bound to the passport digest |
 | `mantyl doctor` | Check the local environment |
 | `mantyl config` | Show the resolved configuration |

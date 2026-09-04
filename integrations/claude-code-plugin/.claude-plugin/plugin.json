@@ -1,0 +1,6 @@
+{
+  "name": "mantyl",
+  "version": "0.1.0",
+  "description": "Generate a verifiable project passport from this session's work: repository evidence, executed checks in Docker, and honest truth statuses for every claim. The handover layer for AI-built software.",
+  "author": { "name": "Mantyl", "url": "https://www.mantyl.dev" }
+}

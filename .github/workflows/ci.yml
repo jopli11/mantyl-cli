@@ -49,3 +49,35 @@ jobs:
           cd /tmp
           mantyl --version
           mantyl doctor
+
+  # The passport action end to end, INCLUDING Sigstore keyless
+  # attestation: GitHub's attestation store only accepts public
+  # repositories, so this proof can only live here, not in the private
+  # monorepo's smoke bed.
+  action-smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the passport action against the fixture
+        id: passport
+        uses: ./
+        with:
+          version: local
+          working-directory: examples/sample-project
+          attest-keyless: "true"
+
+      - name: Assert the outputs
+        shell: bash
+        run: |
+          test "${{ steps.passport.outputs.verdict }}" = "passed"
+          test -n "${{ steps.passport.outputs.passport-digest }}"
+          test "${{ steps.passport.outputs.claims-contradicted }}" != "0"

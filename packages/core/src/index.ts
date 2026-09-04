@@ -44,6 +44,9 @@ export { generateProject } from "./generate.js";
 export type { GenerateResult } from "./generate.js";
 export { receiveProject } from "./receive.js";
 
+export { ciSummary, githubOutputLines, githubStepSummaryMarkdown } from "./ci.js";
+export type { CiSummary } from "./ci.js";
+
 export { openFindings, prepareAccept, recordAcceptance } from "./accept.js";
 export type { ReceiveReport, ReceiveOptions, CheckComparison } from "./receive.js";
 export { buildFileManifest, diffManifests } from "./manifest.js";

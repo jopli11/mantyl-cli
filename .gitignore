@@ -44,3 +44,7 @@ next-env.d.ts
 .verify-jobs/
 .user-links/
 .agency-waitlist/
+
+# rendered launch creatives: regenerable from launch/assets/src + capture/demo.tape, kept out of the delivery bundle
+launch/assets/png/
+launch/assets/capture/demo/
