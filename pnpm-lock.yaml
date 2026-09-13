@@ -36,6 +36,9 @@ importers:
       '@mantyl/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@mantyl/exporters-compliance':
+        specifier: workspace:*
+        version: link:../../packages/exporters-compliance
       '@mantyl/policy':
         specifier: workspace:*
         version: link:../../packages/policy
@@ -187,6 +190,16 @@ importers:
       '@mantyl/schema':
         specifier: workspace:*
         version: link:../schema
+
+  packages/exporters-compliance:
+    dependencies:
+      '@mantyl/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
 
   packages/policy:
     dependencies:

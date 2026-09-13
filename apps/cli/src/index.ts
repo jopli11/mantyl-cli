@@ -336,6 +336,54 @@ program
   });
 
 program
+  .command("export")
+  .description("write the compliance export pack from the generated passport (beta)")
+  .option("--out <dir>", "directory the documents are written to", ".mantyl/exports")
+  .action(async (opts: { out: string }) => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { join, resolve } = await import("node:path");
+    const { canonicalJson } = await import("@mantyl/schema");
+    const { preparePublish, PassportInvalidError } = await import("@mantyl/core");
+    const exporters = await import("@mantyl/exporters-compliance");
+
+    let prepared;
+    try {
+      prepared = await preparePublish(process.cwd());
+    } catch (err) {
+      if (err instanceof PassportInvalidError) {
+        process.stderr.write(`mantyl export: ${err.message}\n`);
+        process.exit(ExitCode.PassportInvalid);
+      }
+      throw err;
+    }
+
+    const passport = prepared.passport;
+    const record = exporters.buildProvenanceRecord(passport);
+    const outDir = resolve(opts.out);
+    await mkdir(outDir, { recursive: true });
+    const files: Array<[string, string]> = [
+      ["ai-provenance.json", `${canonicalJson(record)}\n`],
+      ["ai-provenance.md", exporters.renderProvenanceMarkdown(record)],
+      ["aibom.cdx.json", `${JSON.stringify(exporters.buildAibom(passport), null, 2)}\n`],
+      ["procurement-answers.md", exporters.renderProcurementSheet(passport)],
+    ];
+    for (const [name, content] of files) {
+      await writeFile(join(outDir, name), content, "utf8");
+    }
+    process.stdout.write(
+      `mantyl export · ${passport.project.name}\n` +
+        `  ▸ passport digest     ${passport.integrity.passportDigest ?? "unstamped"}\n` +
+        `  ▸ ai-provenance       ${join(outDir, "ai-provenance.json")} (+ .md)\n` +
+        `  ▸ aibom               ${join(outDir, "aibom.cdx.json")} (CycloneDX 1.6)\n` +
+        `  ▸ procurement         ${join(outDir, "procurement-answers.md")}\n` +
+        `  ▸ honesty             evidence mapping only · not a conformity assessment, and each\n` +
+        `                        document states its own limits\n` +
+        `  ▸ next                ship them beside the passport · every number traces back to it\n`
+    );
+    process.exit(ExitCode.Ok);
+  });
+
+program
   .command("receive")
   .description("independently validate a passport against a received repository")
   .argument("[path]", "path to the received repository", ".")

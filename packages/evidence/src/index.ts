@@ -117,7 +117,7 @@ function reconcileClaim(claim: ClaimInput, input: ReconcilerInput): ReconciledCl
     return {
       ...claimBase(claim),
       status: "agent-reported",
-      note: "outside the checkable lexicon — reported as stated, not checked",
+      note: "outside the checkable lexicon; reported as stated, not checked",
     };
   }
 
@@ -129,7 +129,7 @@ function reconcileClaim(claim: ClaimInput, input: ReconcilerInput): ReconciledCl
       ...claimBase(claim),
       status: "agent-reported",
       refs: [...claim.refs, ...sourceHits.slice(0, 5)],
-      note: `corroborated: ${entry.label} appears in ${depHit ? "dependencies" : "source"} — not independently executed`,
+      note: `corroborated: ${entry.label} appears in ${depHit ? "dependencies" : "source"}; not independently executed`,
     };
   }
 
@@ -177,7 +177,7 @@ export function reconcile(input: ReconcilerInput): Reconciliation {
       severity: "medium",
       text:
         `${names.length} environment variables are required but undocumented ` +
-        `(${shown.join(", ")}${names.length > shown.length ? ` and ${names.length - shown.length} more` : ""}) — ` +
+        `(${shown.join(", ")}${names.length > shown.length ? ` and ${names.length - shown.length} more` : ""}); ` +
         `the next owner will discover them at runtime`,
       status: "repository-confirmed",
       refs: undocumentedEnv.flatMap((f) => f.refs.slice(0, 1)).slice(0, 10),
@@ -188,7 +188,7 @@ export function reconcile(input: ReconcilerInput): Reconciliation {
       risks.push({
         id: `risk:${fact.id}`,
         severity: "medium",
-        text: `${String(fact.data?.name)} is required but undocumented — the next owner will discover it at runtime`,
+        text: `${String(fact.data?.name)} is required but undocumented; the next owner will discover it at runtime`,
         status: "repository-confirmed",
         refs: fact.refs,
         remediation: `Document ${String(fact.data?.name)} in .env.example`,

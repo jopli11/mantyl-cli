@@ -171,9 +171,14 @@ function assemblePassport(
       // No root package.json name (common in monorepos) → the folder name
       // beats "unknown" (first-user feedback: "Project passport — unknown").
       name: scan.repository.packageJson?.name ?? basename(scan.context.projectRoot),
+      // The stack states what the repository actually contains: a Node
+      // entry only when a package.json exists, a python entry only when
+      // the Python surface was observed, both for polyglot repos.
       stack: [
-        ...(scan.capabilities.usesTypeScript ? ["typescript"] : ["javascript"]),
-        "node",
+        ...(scan.repository.packageJson
+          ? [scan.capabilities.usesTypeScript ? "typescript" : "javascript", "node"]
+          : []),
+        ...(scan.capabilities.python ? ["python"] : []),
       ],
       services: [],
     },

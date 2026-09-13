@@ -52,6 +52,22 @@ compares the commit, and re-executes the recorded checks in the recipient's
 own sandbox. Any divergence is named precisely — a modified file, a check
 that no longer passes — and exits non-zero.
 
+## Compliance exports
+
+`mantyl export` maps the passport into the documents procurement, legal
+and supply-chain reviews ask for, written to `.mantyl/exports/`:
+
+- `ai-provenance.json` and `.md` — an AI provenance record supporting
+  EU AI Act transparency posture with evidence rather than declarations
+- `aibom.cdx.json` — a CycloneDX 1.6 BOM with the AI-involvement trail
+  in namespaced properties, ingestible by standard SBOM tooling
+- `procurement-answers.md` — the questions security reviews actually
+  ask, each answer traceable to the passport
+
+Deterministic, generated locally, and honest about their limits: these
+are evidence mappings, not a conformity assessment, and each document
+states so itself.
+
 ## The truth model
 
 Every claim, decision, risk and setup step carries one of eight statuses.
