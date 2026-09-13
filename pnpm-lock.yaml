@@ -168,6 +168,9 @@ importers:
       '@mantyl/verifier-node':
         specifier: workspace:*
         version: link:../verifier-node
+      '@mantyl/verifier-python':
+        specifier: workspace:*
+        version: link:../verifier-python
       tar:
         specifier: ^7.5.22
         version: 7.5.22
@@ -245,6 +248,16 @@ importers:
       '@mantyl/runner-docker':
         specifier: workspace:*
         version: link:../runner-docker
+      '@mantyl/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+
+  packages/verifier-python:
+    dependencies:
       '@mantyl/schema':
         specifier: workspace:*
         version: link:../schema
