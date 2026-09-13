@@ -14,6 +14,7 @@ import { listTrackedFiles } from "@mantyl/collectors-git";
 import type { Runner, RunnerAvailability } from "@mantyl/runner-docker";
 import { DockerRunner } from "@mantyl/runner-docker";
 import { executeCheck } from "@mantyl/verifier-node";
+import { isPythonCheck, PYTHON_IMAGE } from "@mantyl/verifier-python";
 import { buildFileManifest, diffManifests } from "./manifest.js";
 import { createRunContext } from "./run-context.js";
 import { redactText } from "./redaction.js";
@@ -136,63 +137,79 @@ export async function receiveProject(
   const checks: CheckComparison[] = [];
   if (sandbox.available && !options.skipChecks) {
     const timeoutMs = context.config.config.verify.timeoutSeconds * 1000;
-    // Same session model as verify: one container, install state persists,
-    // network cut permanently after install.
-    const session = await runner.session(repoPath, { network: true });
-    let networkConnected = true;
-    try {
-      for (const planned of passport.verification.plan) {
-        if (!planned.selected) continue;
-        const recorded =
-          passport.verification.results.find((r) => r.checkId === planned.id)?.outcome ??
-          "not-recorded";
-        if (networkConnected && planned.kind !== "install") {
-          await session.disconnectNetwork();
-          networkConnected = false;
-        }
-        const execOptions = {
-          timeoutMs,
-          networkForInstall: true,
-          scrub: (text: string) => redactText(text).text,
-          ...(options.now ? { now: options.now } : {}),
-        };
-        let { result, log } = await executeCheck(
-          { run: (cmd) => session.exec(cmd) },
-          planned,
-          execOptions
-        );
-        // A reproduction mismatch gets ONE retry before declaring divergence:
-        // a resource-starved container produces flaky test runs, and a signed
-        // "diverged" verdict must not rest on scheduler luck. The retry is
-        // recorded — never silent.
-        let retried = false;
-        // "error" means timeout — the session is dead, a retry cannot run.
-        if (result.outcome !== recorded && result.outcome !== "error") {
-          retried = true;
-          ({ result, log } = await executeCheck(
+    // Recorded plans can span stacks; each stack reproduces in its own
+    // sandbox image, exactly as the generator ran it. The id prefix is the
+    // recorded stack marker (check-py-* came from the Python planner).
+    const partitions: Array<{ plan: typeof passport.verification.plan; runner: Runner }> = [];
+    const nodePlan = passport.verification.plan.filter((c) => !isPythonCheck(c.id));
+    const pyPlan = passport.verification.plan.filter((c) => isPythonCheck(c.id));
+    if (nodePlan.some((c) => c.selected)) partitions.push({ plan: nodePlan, runner });
+    if (pyPlan.some((c) => c.selected)) {
+      partitions.push({
+        plan: pyPlan,
+        runner: options.runner ?? new DockerRunner(PYTHON_IMAGE),
+      });
+    }
+
+    for (const partition of partitions) {
+      // Same session model as verify: one container per stack, install
+      // state persists, network cut permanently after install.
+      const session = await partition.runner.session(repoPath, { network: true });
+      let networkConnected = true;
+      try {
+        for (const planned of partition.plan) {
+          if (!planned.selected) continue;
+          const recorded =
+            passport.verification.results.find((r) => r.checkId === planned.id)?.outcome ??
+            "not-recorded";
+          if (networkConnected && planned.kind !== "install") {
+            await session.disconnectNetwork();
+            networkConnected = false;
+          }
+          const execOptions = {
+            timeoutMs,
+            networkForInstall: true,
+            scrub: (text: string) => redactText(text).text,
+            ...(options.now ? { now: options.now } : {}),
+          };
+          let { result, log } = await executeCheck(
             { run: (cmd) => session.exec(cmd) },
             planned,
             execOptions
-          ));
+          );
+          // A reproduction mismatch gets ONE retry before declaring divergence:
+          // a resource-starved container produces flaky test runs, and a signed
+          // "diverged" verdict must not rest on scheduler luck. The retry is
+          // recorded — never silent.
+          let retried = false;
+          // "error" means timeout — the session is dead, a retry cannot run.
+          if (result.outcome !== recorded && result.outcome !== "error") {
+            retried = true;
+            ({ result, log } = await executeCheck(
+              { run: (cmd) => session.exec(cmd) },
+              planned,
+              execOptions
+            ));
+          }
+          // The recipient's evidence too: a failed reproduction is only
+          // actionable if the log survives.
+          await mkdir(join(repoPath, ".mantyl", "logs"), { recursive: true });
+          await writeFile(
+            join(repoPath, ".mantyl", "logs", `receive-${planned.id}.log`),
+            log,
+            "utf8"
+          ).catch(() => undefined);
+          checks.push({
+            checkId: planned.id,
+            recorded,
+            reproduced: result.outcome,
+            match: recorded === result.outcome,
+            ...(retried ? { retried: true } : {}),
+          });
         }
-        // The recipient's evidence too: a failed reproduction is only
-        // actionable if the log survives.
-        await mkdir(join(repoPath, ".mantyl", "logs"), { recursive: true });
-        await writeFile(
-          join(repoPath, ".mantyl", "logs", `receive-${planned.id}.log`),
-          log,
-          "utf8"
-        ).catch(() => undefined);
-        checks.push({
-          checkId: planned.id,
-          recorded,
-          reproduced: result.outcome,
-          match: recorded === result.outcome,
-          ...(retried ? { retried: true } : {}),
-        });
+      } finally {
+        await session.close();
       }
-    } finally {
-      await session.close();
     }
   }
 

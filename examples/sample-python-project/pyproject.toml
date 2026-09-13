@@ -1,0 +1,9 @@
+[project]
+name = "notes-api-py"
+version = "0.1.0"
+description = "Seeded Python fixture for Mantyl's verifier tests."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+line-length = 100

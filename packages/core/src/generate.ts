@@ -19,6 +19,7 @@ import {
   type PlannedCheck,
 } from "@mantyl/schema";
 import type { Reconciliation } from "@mantyl/evidence";
+import { isPythonCheck, planPythonChecks } from "@mantyl/verifier-python";
 import { analyzeProject, providerFromConfig, type ProjectAnalysis } from "./analysis.js";
 import { buildFileManifest, type FileManifest } from "./manifest.js";
 import { reconcileProject } from "./reconcile.js";
@@ -55,6 +56,9 @@ function assemblePassport(
   );
 
   const envFacts = scan.facts.filter((f) => f.kind === "env");
+  // The manifest a non-verified step points back at, per stack.
+  const pyRef = scan.repository.python?.ref;
+  const pyManifestPath = pyRef?.kind === "file" ? pyRef.path : "pyproject.toml";
   const plannedSteps = verification.plan
     .filter((check) => check.selected && (check.kind === "install" || check.kind === "build"))
     .map((check) => ({
@@ -64,24 +68,44 @@ function assemblePassport(
         : ("repository-confirmed" as const),
       refs: passedChecks.has(check.id)
         ? [{ kind: "check" as const, checkId: check.id }]
-        : [{ kind: "file" as const, path: "package.json" }],
+        : [
+            {
+              kind: "file" as const,
+              path: isPythonCheck(check.id) ? pyManifestPath : "package.json",
+            },
+          ],
       command: check.command,
     }));
 
   // No verification plan yet → derive repository-confirmed steps from the
-  // declared scripts. Honest ceiling: never above repository-confirmed.
+  // declared manifests, per stack. Honest ceiling: never above
+  // repository-confirmed.
   const pm = scan.capabilities.packageManager ?? "npm";
-  const fallbackSteps = [
-    { key: "install", command: `${pm} install` },
-    ...(scan.capabilities.scripts.build ? [{ key: "build", command: `${pm} run build` }] : []),
-    ...(scan.capabilities.scripts.test ? [{ key: "test", command: `${pm} test` }] : []),
-  ].map((step) => ({
-    id: `setup:${step.key}`,
-    status: "repository-confirmed" as const,
-    refs: [{ kind: "file" as const, path: "package.json" }],
-    command: step.command,
-  }));
-  const setupSteps = plannedSteps.length > 0 ? plannedSteps : fallbackSteps;
+  const nodeFallbackSteps = scan.repository.packageJson
+    ? [
+        { key: "install", command: `${pm} install` },
+        ...(scan.capabilities.scripts.build ? [{ key: "build", command: `${pm} run build` }] : []),
+        ...(scan.capabilities.scripts.test ? [{ key: "test", command: `${pm} test` }] : []),
+      ].map((step) => ({
+        id: `setup:${step.key}`,
+        status: "repository-confirmed" as const,
+        refs: [{ kind: "file" as const, path: "package.json" }],
+        command: step.command,
+      }))
+    : [];
+  // The Python planner is the single source of truth for its install command.
+  const pyFallbackSteps = scan.capabilities.python
+    ? planPythonChecks(scan.capabilities.python)
+        .filter((check) => check.selected && check.kind === "install")
+        .map((check) => ({
+          id: "setup:py-install",
+          status: "repository-confirmed" as const,
+          refs: [{ kind: "file" as const, path: pyManifestPath }],
+          command: check.command,
+        }))
+    : [];
+  const setupSteps =
+    plannedSteps.length > 0 ? plannedSteps : [...nodeFallbackSteps, ...pyFallbackSteps];
 
   // Workspace packages (any non-root package.json) are the module map in a
   // monorepo; single-package projects fall back to top-level src/ files.
@@ -98,7 +122,7 @@ function assemblePassport(
           path: dir,
         }))
       : scan.repository.files
-          .filter((f) => /^src\/.*\.(ts|tsx|js|mjs)$/.test(f.path))
+          .filter((f) => /^(?:src\/.*\.(?:ts|tsx|js|mjs|py)|[^/]+\.py)$/.test(f.path))
           .slice(0, 12)
           .map((f) => ({
             id: `module:${f.path}`,

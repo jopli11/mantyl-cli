@@ -126,3 +126,49 @@ describe("verifyProject", () => {
     expect(installLog).toContain("[REDACTED:");
   });
 });
+
+const PY_FIXTURE_PROJECT = fileURLToPath(
+  new URL("../../../examples/sample-python-project", import.meta.url)
+);
+
+describe("verifyProject on a Python project", () => {
+  it("plans the Python stack and executes it under the same network rules", async () => {
+    const artifactsDir = await tempDir();
+    const runner = new RecordingRunner([{ exitCode: 0 }, { exitCode: 0 }, { exitCode: 0 }]);
+    const result = await verifyProject(PY_FIXTURE_PROJECT, {
+      ...OPTIONS,
+      runner,
+      artifactsDir,
+    });
+
+    // Fixture: requirements.txt declares pytest+ruff, no mypy, no package.json.
+    expect(result.plan.map((c) => c.id)).toEqual([
+      "check-py-install",
+      "check-py-test",
+      "check-py-lint",
+      "check-py-typecheck",
+    ]);
+    expect(result.plan.find((c) => c.id === "check-py-typecheck")?.selected).toBe(false);
+
+    // install + test + lint execute; install online, everything after offline.
+    expect(runner.commands.length).toBe(3);
+    expect(runner.commands[0]?.network).toBe(true);
+    expect(runner.commands[0]?.command).toContain("pip install -r requirements.txt");
+    expect(runner.commands[1]?.network).toBe(false);
+    expect(runner.commands[2]?.network).toBe(false);
+    expect(runner.disconnectedAfter).toBe(1);
+    expect(runner.closed).toBe(true);
+    expect(result.results.every((r) => r.outcome === "passed")).toBe(true);
+  });
+
+  it("skips honestly when the sandbox is unavailable, python plan included", async () => {
+    const artifactsDir = await tempDir();
+    const result = await verifyProject(PY_FIXTURE_PROJECT, {
+      ...OPTIONS,
+      runner: new UnavailableRunner(),
+      artifactsDir,
+    });
+    expect(result.results.length).toBe(3);
+    expect(result.results.every((r) => r.outcome === "skipped")).toBe(true);
+  });
+});

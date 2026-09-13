@@ -110,3 +110,46 @@ describe("collectRepository on the seeded fixture", () => {
     expect(a).toBe(b);
   });
 });
+
+/** The seeded Python fixture — same rule: quirks are DISCOVERED, not assumed. */
+const PY_FIXTURE = fileURLToPath(
+  new URL("../../../examples/sample-python-project", import.meta.url)
+);
+
+describe("collectRepository on the seeded Python fixture", () => {
+  it("discovers Python env references in both access forms", async () => {
+    const obs = await collectRepository(PY_FIXTURE);
+    const names = obs.envReferences.map((e) => e.name);
+    expect(names).toContain("API_TOKEN"); // os.environ["..."]
+    expect(names).toContain("NOTES_STORAGE_DIR"); // os.getenv("...")
+    const apiToken = obs.envReferences.find((e) => e.name === "API_TOKEN")!;
+    expect(apiToken.refs[0]).toMatchObject({ kind: "file", path: "app.py" });
+    // No .env.example in the fixture: the documentation gap must surface.
+    expect(obs.envDocumented).toBeNull();
+  });
+
+  it("harvests the seeded persistence TODO from a # comment", async () => {
+    const obs = await collectRepository(PY_FIXTURE);
+    const todo = obs.todos.find((t) => t.text.includes("persistence"));
+    expect(todo).toBeDefined();
+    expect(todo?.ref).toMatchObject({ kind: "file", path: "app.py" });
+  });
+
+  it("observes the Python project shape", async () => {
+    const obs = await collectRepository(PY_FIXTURE);
+    expect(obs.packageJson).toBeNull();
+    expect(obs.python).not.toBeNull();
+    expect(obs.python?.hasPyproject).toBe(true);
+    expect(obs.python?.requirementsFiles).toEqual(["requirements.txt"]);
+    expect(obs.python?.lockfile).toBeNull();
+    expect(obs.python?.testFileCount).toBe(1);
+    expect(obs.python?.pyFileCount).toBeGreaterThanOrEqual(3);
+    expect(obs.python?.requirementsText).toContain("pytest");
+    expect(obs.python?.ref).toMatchObject({ kind: "file", path: "pyproject.toml" });
+  });
+
+  it("reports python as null for a repository without Python", async () => {
+    const obs = await collectRepository(FIXTURE);
+    expect(obs.python).toBeNull();
+  });
+});

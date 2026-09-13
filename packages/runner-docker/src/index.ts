@@ -181,6 +181,16 @@ export class DockerRunner implements Runner {
         await rm(staging, { recursive: true, force: true });
       }
       await execFileAsync("docker", ["start", name], { timeout: 60_000 });
+      if (process.platform === "win32") {
+        // Windows has no execute bit, so docker cp lands every staged file
+        // as 755 and mode-aware tools report findings our copy-in
+        // manufactured (ruff EXE002, found by Python-verifier dogfood).
+        // Normalize to the truthful non-executable mode; directories keep
+        // traversal via +X. Linux and mac hosts carry real modes untouched.
+        await execFileAsync("docker", ["exec", name, "sh", "-lc", "chmod -R a-x+X /work"], {
+          timeout: 60_000,
+        });
+      }
     } catch (err) {
       execFile("docker", ["rm", "-f", name], () => undefined);
       throw err;

@@ -31,6 +31,7 @@
     "@mantyl/runner-docker": "workspace:*",
     "@mantyl/schema": "workspace:*",
     "@mantyl/verifier-node": "workspace:*",
+    "@mantyl/verifier-python": "workspace:*",
     "tar": "^7.5.22",
     "zod": "^4.4.3"
   },

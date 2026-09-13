@@ -21,6 +21,12 @@ Requires Node 20.12+. Treat Docker Desktop as a prerequisite for the full
 result — it powers sandbox verification, where the passport's strongest
 evidence comes from. Without it, checks are honestly recorded as skipped.
 
+Executed checks cover Node and TypeScript projects, and, new in 0.6.0,
+Python projects in beta: dependencies install from your uv, poetry or
+pipenv lock, your requirements files, or an installable pyproject, and
+pytest, ruff and mypy run when your project declares them. A repository
+with both stacks gets both, each in its own sandbox image.
+
 ## Quickstart
 
 ```bash

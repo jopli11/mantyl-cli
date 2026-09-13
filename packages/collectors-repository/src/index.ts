@@ -34,6 +34,26 @@ export interface PackageJsonObservation {
   ref: SourceRef;
 }
 
+export interface PythonObservation {
+  pyFileCount: number;
+  testFileCount: number;
+  hasPyproject: boolean;
+  /**
+   * Raw pyproject.toml text (size-capped). Dependency declarations are
+   * detected by word-boundary search over this text rather than a TOML
+   * parse: deterministic, dependency-free, and honest about being a
+   * declaration check, not a resolution.
+   */
+  pyprojectText: string | null;
+  hasSetupPy: boolean;
+  /** Root-level requirements*.txt files, sorted. */
+  requirementsFiles: string[];
+  /** Concatenated raw text of those files (size-capped each). */
+  requirementsText: string;
+  lockfile: "uv" | "poetry" | "pipenv" | null;
+  ref: SourceRef;
+}
+
 export interface RepositoryObservation {
   files: FileEntry[];
   fileCount: number;
@@ -42,6 +62,8 @@ export interface RepositoryObservation {
   lockfile: "pnpm" | "npm" | "yarn" | "bun" | null;
   hasTsconfig: boolean;
   readmePath: string | null;
+  /** Python surface of the repository (null when no Python is present). */
+  python: PythonObservation | null;
   envReferences: EnvReference[];
   /** Variable names documented in .env.example (null when absent). */
   envDocumented: { path: string; names: string[] } | null;
@@ -61,6 +83,14 @@ const IGNORED_DIRS = new Set([
   ".mantyl",
   ".vercel",
   ".turbo",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".tox",
+  ".eggs",
 ]);
 
 const SOURCE_EXTENSIONS = new Set([
@@ -72,6 +102,7 @@ const SOURCE_EXTENSIONS = new Set([
   ".jsx",
   ".mjs",
   ".cjs",
+  ".py",
 ]);
 
 const MAX_FILES = 10_000;
@@ -222,6 +253,16 @@ function scanSource(
       refs.push({ kind: "file", path, lines: [lineNo, lineNo] });
       envRefs.set(name, refs);
     }
+    // The Python forms: subscript, .get and getenv. The escaped literals in
+    // this source never match themselves for the same reason as above.
+    const pyEnvAccess =
+      /os\.(?:environ\[["']([A-Z][A-Z0-9_]*)["']\]|(?:environ\.get|getenv)\(\s*["']([A-Z][A-Z0-9_]*)["'])/g;
+    for (const match of line.matchAll(pyEnvAccess)) {
+      const name = (match[1] ?? match[2])!;
+      const refs = envRefs.get(name) ?? [];
+      refs.push({ kind: "file", path, lines: [lineNo, lineNo] });
+      envRefs.set(name, refs);
+    }
     const todo = /(?:\/\/|\/\*|#|\*)\s*(TODO|FIXME)[:\s](.{0,160})/.exec(line);
     if (todo) {
       todos.push({
@@ -230,6 +271,58 @@ function scanSource(
       });
     }
   }
+}
+
+const PY_TEST_FILE = /(?:^|\/)tests?\/[^/]*\.py$|(?:^|\/)test_[^/]*\.py$|_test\.py$/;
+
+async function collectPython(
+  root: string,
+  paths: string[],
+  files: FileEntry[]
+): Promise<PythonObservation | null> {
+  const pyFiles = files.filter((f) => f.path.endsWith(".py"));
+  const hasPyproject = paths.includes("pyproject.toml");
+  const hasSetupPy = paths.includes("setup.py");
+  const requirementsFiles = paths
+    .filter((p) => /^requirements[^/]*\.txt$/.test(p))
+    .sort();
+  if (pyFiles.length === 0 && !hasPyproject && !hasSetupPy && requirementsFiles.length === 0) {
+    return null;
+  }
+
+  const readCapped = (path: string): Promise<string | null> =>
+    readFile(join(root, path), "utf8")
+      .then((text) => text.slice(0, MAX_SCAN_BYTES))
+      .catch(() => null);
+
+  const pyprojectText = hasPyproject ? await readCapped("pyproject.toml") : null;
+  const requirementsTexts = await Promise.all(requirementsFiles.map(readCapped));
+
+  const lockfile = paths.includes("uv.lock")
+    ? ("uv" as const)
+    : paths.includes("poetry.lock")
+      ? ("poetry" as const)
+      : paths.includes("Pipfile.lock")
+        ? ("pipenv" as const)
+        : null;
+
+  const refPath =
+    (hasPyproject ? "pyproject.toml" : null) ??
+    requirementsFiles[0] ??
+    (hasSetupPy ? "setup.py" : null) ??
+    pyFiles[0]!.path;
+
+  return {
+    pyFileCount: pyFiles.length,
+    testFileCount: pyFiles.filter((f) => PY_TEST_FILE.test(f.path)).length,
+    hasPyproject,
+    pyprojectText,
+    hasSetupPy,
+    requirementsFiles,
+    requirementsText: requirementsTexts.filter((t): t is string => t !== null).join("\n"),
+    lockfile,
+    ref: { kind: "file", path: refPath },
+  };
 }
 
 async function readEnvExample(root: string): Promise<RepositoryObservation["envDocumented"]> {
@@ -287,6 +380,7 @@ export async function collectRepository(
     lockfile: await detectLockfile(projectRoot),
     hasTsconfig: paths.includes("tsconfig.json"),
     readmePath,
+    python: await collectPython(projectRoot, paths, files),
     envReferences: [...envRefs.entries()]
       .map(([name, refs]) => ({ name, refs }))
       .sort((a, b) => (a.name < b.name ? -1 : 1)),

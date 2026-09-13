@@ -119,7 +119,12 @@ export async function scanProject(
 
   // Distinguish the delivered repository from local-machine state: a file on
   // disk that git does not track is not part of what the recipient receives.
-  if (git.isRepo) {
+  // Zero tracked files means git carries no information about THIS project
+  // (a fresh project inside a parent repo, before its first commit) — then
+  // every file stays in, matching receive's rule exactly, or the generator
+  // fingerprints an empty delivery and every receive falsely diverges
+  // (found by the Python-verifier dogfood on the uncommitted fixture).
+  if (git.isRepo && trackedPaths.size > 0) {
     repository.files = repository.files.map((f) => ({
       ...f,
       tracked: trackedPaths.has(f.path),

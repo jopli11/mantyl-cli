@@ -113,3 +113,39 @@ describe("scanProject on the seeded fixture", () => {
     }
   });
 });
+
+describe("scanProject inside a parent repo before first commit", () => {
+  it("leaves files unannotated when git tracks nothing under the project", async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const run = promisify(execFile);
+
+    // Parent repo with one committed file; the project subdir stays
+    // entirely uncommitted, like a fresh build before its first commit.
+    const parent = await tempDir();
+    await run("git", ["init"], { cwd: parent });
+    await writeFile(join(parent, "README.md"), "parent\n");
+    await run("git", ["add", "README.md"], { cwd: parent });
+    await run("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"], {
+      cwd: parent,
+    });
+    const project = join(parent, "new-project");
+    await mkdir(project);
+    await writeFile(join(project, "package.json"), '{"name":"fresh"}\n');
+    await writeFile(join(project, "index.js"), "module.exports = 1;\n");
+
+    const result = await scanProject(project, {
+      toolVersion: "0.0.0-test",
+      sessionDir: FIXTURE_SESSIONS,
+      artifactsDir: await tempDir(),
+      now: () => new Date("2026-09-13T09:00:00.000Z"),
+    });
+
+    // Zero tracked files means git knows nothing about THIS project: no
+    // file may be marked untracked, or the generator fingerprints an empty
+    // delivery and every receive falsely diverges (Python dogfood find).
+    expect(result.repository.files.length).toBeGreaterThan(0);
+    expect(result.repository.files.every((f) => f.tracked === undefined)).toBe(true);
+  });
+});

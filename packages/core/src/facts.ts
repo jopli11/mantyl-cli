@@ -55,6 +55,23 @@ export function extractFacts(
     });
   }
 
+  if (repo.python && caps.python?.manager) {
+    const statements: Record<string, string> = {
+      uv: "Python dependencies are locked with uv",
+      poetry: "Python dependencies are locked with poetry",
+      pipenv: "Python dependencies are locked with pipenv",
+      "pip-requirements": "Python dependencies are declared in requirements files",
+      "pip-project": "Python dependencies are declared in the project manifest",
+    };
+    facts.push({
+      id: "fact:python:manager",
+      kind: "package",
+      statement: statements[caps.python.manager]!,
+      refs: [repo.python.ref],
+      data: { pythonManager: caps.python.manager },
+    });
+  }
+
   for (const [name, present] of Object.entries(caps.scripts)) {
     if (present && pkgRef) {
       facts.push({
